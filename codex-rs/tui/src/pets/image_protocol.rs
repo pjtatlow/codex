@@ -185,6 +185,14 @@ fn supports_kitty_graphics(info: &TerminalInfo) -> bool {
         || terminal_field_contains(info.term_program.as_deref(), "kitty")
         || terminal_field_contains(info.term_program.as_deref(), "ghostty")
         || terminal_field_contains(info.term_program.as_deref(), "wezterm")
+        || info
+            .term_program
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("rex"))
+        || info
+            .term
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("xterm-rex"))
 }
 
 fn supports_sixel(info: &TerminalInfo) -> bool {
@@ -544,6 +552,64 @@ mod tests {
             assert_eq!(
                 pet_image_support_for_terminal(&info),
                 PetImageSupport::Supported(ImageProtocol::Kitty)
+            );
+        }
+    }
+
+    #[test]
+    fn pet_image_support_detects_rex_kitty_graphics() {
+        for (term_program, term) in [
+            (Some("rex"), None),
+            (Some("Rex"), None),
+            (None, Some("xterm-rex")),
+        ] {
+            assert_eq!(
+                pet_image_support_for_terminal(&terminal_info_for_test(
+                    TerminalName::Unknown,
+                    /*multiplexer*/ None,
+                    term_program,
+                    term,
+                )),
+                PetImageSupport::Supported(ImageProtocol::Kitty)
+            );
+        }
+    }
+
+    #[test]
+    fn rex_image_support_preserves_multiplexer_restrictions() {
+        for (multiplexer, reason) in [
+            (
+                Multiplexer::Tmux { version: None },
+                PetImageUnsupportedReason::Tmux,
+            ),
+            (
+                Multiplexer::Zellij { version: None },
+                PetImageUnsupportedReason::Zellij,
+            ),
+        ] {
+            assert_eq!(
+                pet_image_support_for_terminal(&terminal_info_for_test(
+                    TerminalName::Unknown,
+                    Some(multiplexer),
+                    Some("rex"),
+                    /*term*/ None,
+                )),
+                PetImageSupport::Unsupported(reason)
+            );
+        }
+    }
+
+    #[test]
+    fn pet_image_support_does_not_match_rex_substrings() {
+        for (term_program, term) in [(Some("rex-other"), None), (None, Some("xterm-rex-other"))] {
+            assert_eq!(
+                pet_image_support_for_terminal(&terminal_info_for_test(
+                    TerminalName::Unknown,
+                    /*multiplexer*/ None,
+                    term_program,
+                    term,
+                )),
+                PetImageSupport::Unsupported(PetImageUnsupportedReason::Terminal)
             );
         }
     }
